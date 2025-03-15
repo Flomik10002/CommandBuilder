@@ -1,0 +1,16 @@
+name: CommandBuilder
+version: '1.0'
+main: org.flomik.commandBuilder.Main
+api-version: '1.20'
+load: STARTUP
+authors: [ Flomik ]
+
+commands:
+  commandbuilder:
+    description: Управление кастомными командами
+    usage: /commandbuilder <subcommand>
+    permission: commandbuilder.admin
+
+permissions:
+  commandbuilder.admin:
+    default: op
