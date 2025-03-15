@@ -11,7 +11,7 @@ public class CommandStorage {
 
     private final Main plugin;
     private final File commandFile;
-    private final FileConfiguration commandConfig;
+    private FileConfiguration commandConfig;
     public final Map<String, List<String>> commandActions = new HashMap<>();
 
     public CommandStorage(Main plugin) {
@@ -27,14 +27,17 @@ public class CommandStorage {
     }
 
     public void loadCommands() {
+
+        commandConfig = YamlConfiguration.loadConfiguration(commandFile);
+
         commandActions.clear();
         if (commandConfig.getConfigurationSection("commands") == null) {
             return;
         }
 
         for (String cmdName : commandConfig.getConfigurationSection("commands").getKeys(false)) {
-            List<String> actions = commandConfig.getStringList("commands." + cmdName + ".actions");
-            commandActions.put(cmdName.toLowerCase(), new ArrayList<>(actions));
+            List<String> acts = commandConfig.getStringList("commands." + cmdName + ".actions");
+            commandActions.put(cmdName.toLowerCase(), new ArrayList<>(acts));
         }
     }
 

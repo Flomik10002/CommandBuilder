@@ -11,7 +11,7 @@ public class FlagManager {
 
     private final Main plugin;
     private final File flagFile;
-    private final FileConfiguration flagConfig;
+    private FileConfiguration flagConfig;
 
     private final Map<UUID, Map<String, Boolean>> playerFlags = new HashMap<>();
 
@@ -29,9 +29,27 @@ public class FlagManager {
         loadFlags();
     }
 
+    public void removeFlagFromAll(String flagName) {
+
+        defaultFlags.remove(flagName);
+
+
+        for (UUID uuid : playerFlags.keySet()) {
+            if (playerFlags.get(uuid).containsKey(flagName)) {
+                playerFlags.get(uuid).remove(flagName);
+            }
+        }
+
+        saveFlags();
+    }
+
     public void loadFlags() {
+
+        flagConfig = YamlConfiguration.loadConfiguration(flagFile);
+
         playerFlags.clear();
         defaultFlags.clear();
+
 
         List<String> loadedDefaults = flagConfig.getStringList("defaults");
         defaultFlags.addAll(loadedDefaults);
@@ -45,11 +63,9 @@ public class FlagManager {
                     continue;
                 }
                 Map<String, Boolean> flags = new HashMap<>();
-                if (flagConfig.getConfigurationSection("players." + uuidString) != null) {
-                    for (String flag : flagConfig.getConfigurationSection("players." + uuidString).getKeys(false)) {
-                        boolean value = flagConfig.getBoolean("players." + uuidString + "." + flag);
-                        flags.put(flag, value);
-                    }
+                for (String flag : flagConfig.getConfigurationSection("players." + uuidString).getKeys(false)) {
+                    boolean value = flagConfig.getBoolean("players." + uuidString + "." + flag);
+                    flags.put(flag, value);
                 }
                 playerFlags.put(uuid, flags);
             }

@@ -34,6 +34,7 @@ public class Main extends JavaPlugin implements Listener {
 
     @Override
     public void onDisable() {
+
         commandStorage.saveCommands();
         getLogger().info("CommandBuilder выключен!");
     }
@@ -53,6 +54,7 @@ public class Main extends JavaPlugin implements Listener {
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+
         if (!player.hasPlayedBefore()) {
             for (String defaultFlag : getFlagManager().getDefaultFlags()) {
                 getFlagManager().setFlag(player.getUniqueId(), defaultFlag, false);
@@ -60,123 +62,122 @@ public class Main extends JavaPlugin implements Listener {
         }
     }
 
-
     @EventHandler
     public void onPlayerCommandPreprocess(PlayerCommandPreprocessEvent event) {
-        String message = event.getMessage();
-        String[] split = message.substring(1).split(" ", 2);
+
+        String message = event.getMessage().substring(1);
+        String[] split = message.split(" ", 2);
         String commandLabel = split[0].toLowerCase();
 
-        // Если это не наша кастомная команда — пропускаем
+
         if (commandLabel.equalsIgnoreCase("commandbuilder")) {
             return;
         }
 
-        // Пытаемся взять список действий из commandStorage
+
         List<String> actions = commandStorage.getActions(commandLabel);
         if (actions.isEmpty()) {
-            return; // не наша команда
+
+            return;
         }
 
-        // Отменяем стандартную механику выполнения
+
         event.setCancelled(true);
 
-        // Запускаем «шаг за шагом» выполнение
+
         processActions(event.getPlayer(), actions, 0);
     }
 
     /**
-     * Рекурсивно (или пошагово) обрабатывает список actions с позиции index.
-     * Если встречает delay, откладывает продолжение через N секунд.
-     * Если встречает checkflag, внутри него может быть своя «мини-цепочка» действий (включая delay).
+     * Последовательно обрабатывает список действий.
+     * Если встречаем delay => пауза
+     * Если checkflag => при совпадении значения флага выполняем под-действия
+     * и т.д.
      */
     private void processActions(Player player, List<String> actions, int index) {
         if (index >= actions.size()) {
-            return; // Дошли до конца цепочки
+            return;
         }
 
         String actionLine = actions.get(index);
-        // Разбиваем по двоеточию, чтобы понять тип
+
         String[] parts = actionLine.split(":", 2);
         if (parts.length < 2) {
-            // Неверный формат "тип:значение" — переходим к следующему
+
             processActions(player, actions, index + 1);
             return;
         }
 
         String type = parts[0].toLowerCase();
-        // Подставляем %player%, если оно вдруг есть
+
         String rawValue = parts[1].replace("%player%", player.getName());
 
         switch (type) {
             case "message" -> {
-                // Просто сообщение
+
                 player.sendMessage(ChatColor.translateAlternateColorCodes('&', rawValue));
                 processActions(player, actions, index + 1);
             }
-
             case "command" -> {
-                // Выполним от имени консоли
+
                 Bukkit.dispatchCommand(Bukkit.getConsoleSender(), rawValue);
                 processActions(player, actions, index + 1);
             }
-
-            case "setflag" -> {
-                // Сейчас ставим флаг = true по умолчанию,
-                // если не встретили =true/false. Можно оставить так или сделать парсинг, как ранее показывалось.
-                getFlagManager().setFlag(player.getUniqueId(), rawValue, true);
-                processActions(player, actions, index + 1);
-            }
-
-            case "removeflag" -> {
-                getFlagManager().removeFlag(player.getUniqueId(), rawValue);
-                processActions(player, actions, index + 1);
-            }
-
             case "delay" -> {
-                // Формат: "delay:5" -> ждем 5 секунд и продолжаем
-                int delaySeconds;
+
+                int delaySec;
                 try {
-                    delaySeconds = Integer.parseInt(rawValue);
+                    delaySec = Integer.parseInt(rawValue);
                 } catch (NumberFormatException e) {
-                    // Неверное число — пропускаем
                     processActions(player, actions, index + 1);
                     return;
                 }
-
-                // Планируем продолжение цепочки через delaySeconds * 20 тиков
                 Bukkit.getScheduler().runTaskLater(this, () -> {
                     processActions(player, actions, index + 1);
-                }, delaySeconds * 20L);
+                }, delaySec * 20L);
             }
+            case "setflag" -> {
 
+                String[] arr = rawValue.split("=", 2);
+                if (arr.length < 2) {
+                    player.sendMessage(ChatColor.RED + "[ERROR] setflag: нужен формат flagName=true/false");
+                } else {
+                    String flagName = arr[0];
+                    boolean val = Boolean.parseBoolean(arr[1]);
+                    flagManager.setFlag(player.getUniqueId(), flagName, val);
+                }
+                processActions(player, actions, index + 1);
+            }
+            case "removeflag" -> {
+
+                flagManager.removeFlag(player.getUniqueId(), rawValue);
+                processActions(player, actions, index + 1);
+            }
             case "checkflag" -> {
-                // Формат: "checkflag:flagName=bool <под-действия>"
-                // Пример: "checkflag:talked_to_homeless=false delay:5 message:\"&7Привет, игрок!\""
-                // Сначала отделим "talked_to_homeless=false" (условие) и всё остальное
+
                 String[] splitted = rawValue.split(" ", 2);
                 if (splitted.length < 2) {
-                    // Нет второй части — ничего не делаем
                     processActions(player, actions, index + 1);
                     return;
                 }
 
-                String conditionPart = splitted[0];   // "talked_to_homeless=false"
-                String subActionsRaw = splitted[1];   // "delay:5 message:\"&7Привет, игрок!\""
 
-                // Парсим условие
-                String[] condSplit = conditionPart.split("=", 2);
-                if (condSplit.length < 2) {
+                String conditionPart = splitted[0];
+                String subActionsRaw = splitted[1];
+
+
+                String[] arr = conditionPart.split("=", 2);
+                if (arr.length < 2) {
+                    player.sendMessage(ChatColor.RED + "[ERROR] checkflag: нужно flagName=true/false ...");
                     processActions(player, actions, index + 1);
                     return;
                 }
-                String flagName = condSplit[0];
-                boolean requiredValue = Boolean.parseBoolean(condSplit[1]);
+                String flagName = arr[0];
+                boolean requiredVal = Boolean.parseBoolean(arr[1]);
 
-                boolean actualValue = getFlagManager().hasFlag(player.getUniqueId(), flagName);
-                if (actualValue == requiredValue) {
-                    // Условие совпало — нужно выполнить subActionsRaw
-                    // Разберём их через parseSubActions, где учитываем кавычки
+                boolean actualVal = flagManager.hasFlag(player.getUniqueId(), flagName);
+                if (actualVal == requiredVal) {
+
                     List<String> subActions = parseSubActions(subActionsRaw);
                     if (!subActions.isEmpty()) {
                         processSubActions(player, subActions, 0, () -> {
@@ -185,57 +186,50 @@ public class Main extends JavaPlugin implements Listener {
                         return;
                     }
                 }
-                // Если условие НЕ совпало, или subActions пуст — просто идём дальше
+
                 processActions(player, actions, index + 1);
             }
-
             default -> {
-                // неизвестный тип
+
                 processActions(player, actions, index + 1);
             }
         }
     }
 
     /**
-     * Новый метод, который умеет распознавать кавычки.
-     * Если находим "слово в кавычках", то берём всё как одно целое, игнорируя пробелы внутри кавычек.
-     *
-     * Пример входа: "delay:5 message:\"&7Привет, игрок!\" command:/say_тест"
-     * Мы получим токены:
-     *  1) delay:5
-     *  2) message:"&7Привет, игрок!"
-     *  3) command:/say_тест
+     * Разбивает строку под-действий на список:
+     * Пример входа: "message:\"&7Привет\" setflag:myFlag=true command:\"kill %player%\""
+     * => токены:
+     *   1) message:"&7Привет"
+     *   2) setflag:myFlag=true
+     *   3) command:"kill %player%"
      */
     private List<String> parseSubActions(String input) {
         List<String> result = new ArrayList<>();
         int pos = 0;
+
         while (pos < input.length()) {
-            // Пропускаем пробелы
+
             while (pos < input.length() && Character.isWhitespace(input.charAt(pos))) {
                 pos++;
             }
             if (pos >= input.length()) break;
 
-            // Если символ — кавычка ", собираем всё до следующей
+
             if (input.charAt(pos) == '"') {
-                // начинаем собирать
-                int startPos = ++pos; // пропускаем первую кавычку
+                pos++;
                 StringBuilder sb = new StringBuilder();
-                boolean closed = false;
-                while (pos < input.length()) {
-                    if (input.charAt(pos) == '"') {
-                        closed = true;
-                        pos++; // пропускаем закрывающую кавычку
-                        break;
-                    }
+                while (pos < input.length() && input.charAt(pos) != '"') {
                     sb.append(input.charAt(pos));
                     pos++;
                 }
-                // Если не нашли вторую кавычку, sb так и будет содержать весь оставшийся текст
-                // Добавляем sb в result
+
+                if (pos < input.length()) {
+                    pos++;
+                }
                 result.add(sb.toString());
             } else {
-                // Если не кавычка, то токен идёт до пробела
+
                 StringBuilder sb = new StringBuilder();
                 while (pos < input.length() && !Character.isWhitespace(input.charAt(pos))) {
                     sb.append(input.charAt(pos));
@@ -248,82 +242,75 @@ public class Main extends JavaPlugin implements Listener {
     }
 
     /**
-     * Аналог processActions, но для "под-действий" внутри checkflag.
-     * Когда под-действия закончатся, вызовем callback.
+     * Обрабатываем subActions (которые идут после checkflag).
+     * Когда дошли до конца, вызываем callback.
      */
     private void processSubActions(Player player, List<String> actions, int index, Runnable callback) {
         if (index >= actions.size()) {
-            // Всё выполнили — вызываем callback
             callback.run();
             return;
         }
 
         String actionLine = actions.get(index);
-
-        // Разбиваем по двоеточию (тип:значение)
         String[] parts = actionLine.split(":", 2);
         if (parts.length < 2) {
-            // Формат не "тип:значение" — пропускаем
             processSubActions(player, actions, index + 1, callback);
             return;
         }
 
         String type = parts[0].toLowerCase();
-        String rawValue = parts[1].replace("%player%", player.getName());
+        String rawValue = parts[1];
 
-        // Если rawValue обёрнут в кавычки, снимем их:
-        // message:"&7Привет" => rawValue = "\"&7Привет\""
-        // Посмотрим, начинается ли и заканчивается ли на кавычку
-        if (rawValue.startsWith("\"") && rawValue.endsWith("\"") && rawValue.length() >= 2) {
-            // убираем первую и последнюю кавычку
+
+        if (rawValue.startsWith("\"") && rawValue.endsWith("\"") && rawValue.length() > 1) {
             rawValue = rawValue.substring(1, rawValue.length() - 1);
         }
+        rawValue = rawValue.replace("%player%", player.getName());
 
         switch (type) {
-            case "delay" -> {
-                int delaySeconds;
-                try {
-                    delaySeconds = Integer.parseInt(rawValue);
-                } catch (NumberFormatException e) {
-                    processSubActions(player, actions, index + 1, callback);
-                    return;
-                }
-                Bukkit.getScheduler().runTaskLater(this, () -> {
-                    processSubActions(player, actions, index + 1, callback);
-                }, delaySeconds * 20L);
-            }
             case "message" -> {
-                // Теперь rawValue может содержать пробелы
                 player.sendMessage(ChatColor.translateAlternateColorCodes('&', rawValue));
                 processSubActions(player, actions, index + 1, callback);
             }
             case "command" -> {
-                // Выполняем от имени консоли
                 Bukkit.dispatchCommand(Bukkit.getConsoleSender(), rawValue);
                 processSubActions(player, actions, index + 1, callback);
             }
+            case "delay" -> {
+                try {
+                    int sec = Integer.parseInt(rawValue);
+                    Bukkit.getScheduler().runTaskLater(this, () -> {
+                        processSubActions(player, actions, index + 1, callback);
+                    }, sec * 20L);
+                } catch (NumberFormatException e) {
+                    processSubActions(player, actions, index + 1, callback);
+                }
+            }
             case "setflag" -> {
-                // Если хотите, сделайте поддержку "=true/false", но оставим как в вашем коде
-                getFlagManager().setFlag(player.getUniqueId(), rawValue, true);
+                String[] arr = rawValue.split("=", 2);
+                if (arr.length < 2) {
+                    player.sendMessage(ChatColor.RED + "[ERROR] setflag: нужен формат flagName=true/false");
+                } else {
+                    String flagName = arr[0];
+                    boolean val = Boolean.parseBoolean(arr[1]);
+                    flagManager.setFlag(player.getUniqueId(), flagName, val);
+                }
                 processSubActions(player, actions, index + 1, callback);
             }
             case "removeflag" -> {
-                getFlagManager().removeFlag(player.getUniqueId(), rawValue);
+                flagManager.removeFlag(player.getUniqueId(), rawValue);
                 processSubActions(player, actions, index + 1, callback);
             }
             default -> {
-                // неизвестный тип
                 processSubActions(player, actions, index + 1, callback);
             }
         }
     }
 
     public void reloadPlugin() {
-        getLogger().info("Перезагрузка плагина CommandBuilder...");
-
+        getLogger().info("Перезагрузка CommandBuilder...");
         commandStorage.loadCommands();
         flagManager.loadFlags();
-
         getLogger().info("Плагин CommandBuilder успешно перезагружен!");
     }
 }

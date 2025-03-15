@@ -74,9 +74,11 @@ public class CommandManager implements CommandExecutor, TabCompleter {
                 }
                 String commandName = args[1].toLowerCase();
                 String actionType = args[2];
+
                 String actionValue = String.join(" ", args).substring(
                         args[0].length() + args[1].length() + args[2].length() + 3
                 );
+
                 plugin.getCommandStorage().addAction(commandName, actionType + ":" + actionValue);
                 player.sendMessage(ChatColor.GREEN + "Добавлено действие '" + actionType + "' в команду " + commandName + ".");
                 return true;
@@ -127,7 +129,7 @@ public class CommandManager implements CommandExecutor, TabCompleter {
                 }
                 String flagName = args[1].toLowerCase();
 
-                plugin.getFlagManager().removeDefaultFlag(flagName);
+                plugin.getFlagManager().removeFlagFromAll(flagName);
                 player.sendMessage(ChatColor.GREEN + "Флаг '" + flagName + "' убран из дефолтов и удалён у всех игроков.");
                 return true;
             }
@@ -200,7 +202,7 @@ public class CommandManager implements CommandExecutor, TabCompleter {
                 } else {
                     player.sendMessage(ChatColor.GREEN + "Действия команды '" + cmdName + "':");
                     for (int i = 0; i < acts.size(); i++) {
-                        // Показываем индекс, чтобы потом проще было removeaction
+
                         player.sendMessage(ChatColor.AQUA + "" + i + ". " + ChatColor.WHITE + acts.get(i));
                     }
                 }
@@ -220,10 +222,19 @@ public class CommandManager implements CommandExecutor, TabCompleter {
             return null;
         }
 
-        List<String> completions = new ArrayList<>();
 
-        // Главное меню автодополнения
+        if (args.length == 0) {
+            return List.of("reload", "createcommand", "deletecommand", "addaction", "removeaction",
+                    "addflag", "removeflag", "setflag", "listcommands", "listactions");
+        }
+
+        List<String> completions = new ArrayList<>();
+        String firstArg = args[0].toLowerCase();
+
+
         if (args.length == 1) {
+
+
             completions.add("reload");
             completions.add("createcommand");
             completions.add("deletecommand");
@@ -232,56 +243,204 @@ public class CommandManager implements CommandExecutor, TabCompleter {
             completions.add("addflag");
             completions.add("removeflag");
             completions.add("setflag");
-            completions.add("checkflag");
             completions.add("listcommands");
             completions.add("listactions");
-        } else if (args.length == 2) {
-            switch (args[0].toLowerCase()) {
-                case "deletecommand", "addaction", "removeaction", "listactions" ->
-                    // Предлагаем уже созданные команды
-                        completions.addAll(plugin.getCommandStorage().getStoredCommands());
-                case "setflag", "checkflag" ->
-                    // Предлагаем онлайн-игроков
-                        completions.addAll(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList());
-                case "removeflag" ->
-                    // Предлагаем флаги, уже добавленные в defaultFlags
-                        completions.addAll(plugin.getFlagManager().getDefaultFlags());
-                // addflag <flagName> — подсказывать нечего, пусть сам вводит
+
+            return filter(completions, args[0]);
+        }
+
+
+        switch (firstArg) {
+
+
+
+
+            case "reload" -> {
+
+
+                return List.of();
             }
-        } else if (args.length == 3) {
-            switch (args[0].toLowerCase()) {
-                case "addaction" -> {
-                    // Предлагаем тип действия: message, command, setflag, removeflag
+
+            case "createcommand" -> {
+
+
+
+                return List.of();
+            }
+
+            case "deletecommand" -> {
+
+                if (args.length == 2) {
+
+                    completions.addAll(plugin.getCommandStorage().getStoredCommands());
+                    return filter(completions, args[1]);
+                }
+
+                return List.of();
+            }
+
+            case "addflag", "removeflag" -> {
+
+
+                if (args.length == 2) {
+
+
+                    if (firstArg.equals("removeflag")) {
+                        completions.addAll(plugin.getFlagManager().getAllFlags());
+                    }
+
+                    return filter(completions, args[1]);
+                }
+                return List.of();
+            }
+
+            case "listcommands" -> {
+
+
+                return List.of();
+            }
+
+
+
+
+            case "listactions" -> {
+                if (args.length == 2) {
+
+                    completions.addAll(plugin.getCommandStorage().getStoredCommands());
+                    return filter(completions, args[1]);
+                }
+                return List.of();
+            }
+
+
+
+
+            case "removeaction" -> {
+                if (args.length == 2) {
+
+                    completions.addAll(plugin.getCommandStorage().getStoredCommands());
+                    return filter(completions, args[1]);
+                }
+                if (args.length == 3) {
+
+                    String cmdName = args[1].toLowerCase();
+                    List<String> acts = plugin.getCommandStorage().getActions(cmdName);
+                    for (int i = 0; i < acts.size(); i++) {
+                        completions.add(String.valueOf(i));
+                    }
+                    return filter(completions, args[2]);
+                }
+                return List.of();
+            }
+
+
+
+
+            case "addaction" -> {
+                if (args.length == 2) {
+
+                    completions.addAll(plugin.getCommandStorage().getStoredCommands());
+                    return filter(completions, args[1]);
+                }
+                if (args.length == 3) {
+
+
                     completions.add("message");
                     completions.add("command");
                     completions.add("setflag");
                     completions.add("removeflag");
+                    completions.add("delay");
+                    completions.add("checkflag");
+                    return filter(completions, args[2]);
                 }
-                case "setflag" -> {
-                    // Вводит <флаг>
-                    completions.addAll(plugin.getFlagManager().getAllFlags());
-                }
-                case "checkflag" -> {
-                    // Вводит <флаг>
-                    completions.addAll(plugin.getFlagManager().getAllFlags());
-                }
-                case "removeaction" -> {
-                    // Предлагаем индексы действующий у команды
-                    String cmdName = args[1];
-                    List<String> actions = plugin.getCommandStorage().getActions(cmdName);
-                    for (int i = 0; i < actions.size(); i++) {
-                        completions.add(String.valueOf(i));
-                    }
-                }
-            }
-        } else if (args.length == 4 && args[0].equalsIgnoreCase("setflag")) {
-            // setflag <nick> <flag> <true|false>
-            completions.add("true");
-            completions.add("false");
-        }
+                if (args.length == 4) {
 
-        return completions.stream()
-                .filter(s -> s.toLowerCase().startsWith(args[args.length - 1].toLowerCase()))
+                    String actionType = args[2].toLowerCase();
+                    switch (actionType) {
+                        case "message" -> {
+
+                            completions.add("\"&7Привет, %player%!\"");
+                            completions.add("&aТестСообщение");
+                        }
+                        case "command" -> {
+                            completions.add("\"give %player% apple 5\"");
+                            completions.add("kill %player%");
+                        }
+                        case "setflag" -> {
+
+                            for (String f : plugin.getFlagManager().getAllFlags()) {
+                                completions.add(f + "=true");
+                                completions.add(f + "=false");
+                            }
+                        }
+                        case "removeflag" -> {
+
+                            completions.addAll(plugin.getFlagManager().getAllFlags());
+                        }
+                        case "delay" -> {
+
+                            completions.add("3");
+                            completions.add("5");
+                            completions.add("10");
+                        }
+                        case "checkflag" -> {
+
+                            for (String f : plugin.getFlagManager().getAllFlags()) {
+                                completions.add(f + "=true");
+                                completions.add(f + "=false");
+                            }
+                        }
+                    }
+                    return filter(completions, args[3]);
+                }
+
+
+                return List.of();
+            }
+
+
+
+
+            case "setflag" -> {
+                if (args.length == 2) {
+
+                    for (Player p : Bukkit.getOnlinePlayers()) {
+                        completions.add(p.getName());
+                    }
+                    return filter(completions, args[1]);
+                }
+                if (args.length == 3) {
+
+                    completions.addAll(plugin.getFlagManager().getAllFlags());
+                    return filter(completions, args[2]);
+                }
+                if (args.length == 4) {
+
+                    completions.add("true");
+                    completions.add("false");
+                    return filter(completions, args[3]);
+                }
+                return List.of();
+            }
+
+
+
+
+
+
+
+            default -> {
+
+                return List.of();
+            }
+        }
+    }
+
+
+    private List<String> filter(List<String> suggestions, String input) {
+        String lower = input.toLowerCase();
+        return suggestions.stream()
+                .filter(s -> s.toLowerCase().startsWith(lower))
                 .collect(Collectors.toList());
     }
 }
